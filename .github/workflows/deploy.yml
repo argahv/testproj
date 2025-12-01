@@ -1,15 +1,15 @@
-name: CI-CD to K3s
+name: CI-CD to ArgoCD
 
 on:
   push:
     branches: ["main"]
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v3
 
       - name: Login to DockerHub
@@ -19,16 +19,23 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and Push Docker Image
+        id: docker_build
         uses: docker/build-push-action@v4
         with:
           push: true
-          tags: ${{ secrets.DOCKER_USERNAME }}/myapp:latest
+          tags: ${{ secrets.DOCKER_USERNAME }}/testproj:${{ github.sha }}
 
-      - name: Copy Kubeconfig to Runner
+      - name: Update deployment.yaml with new image tag
         run: |
-          echo "${{ secrets.KUBECONFIG_DATA }}" > kubeconfig
-      - name: Deploy to K3s
+          IMAGE_TAG=${{ github.sha }}
+          sed -i "s|argahv/testproj:latest|${IMAGE_TAG}|g" k8s/deployment.yaml
+
+      - name: Commit updated manifest
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add k8s/deployment.yaml
+          git commit -m "Update image tag to ${{ github.sha }}" || echo "No changes to commit"
+          git push
         env:
-          KUBECONFIG: ./kubeconfig
-        run: |
-          kubectl set image deployment/myapp myapp=${{ secrets.DOCKER_USERNAME }}/myapp:latest
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

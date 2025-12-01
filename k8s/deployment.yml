@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: testproj
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: testproj
+  template:
+    metadata:
+      labels:
+        app: testproj
+    spec:
+      containers:
+        - name: testproj
+          image: argahv/testproj:latest
+          ports:
+            - containerPort: 80
