@@ -1,0 +1,34 @@
+name: CI-CD to K3s
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v4
+        with:
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/myapp:latest
+
+      - name: Copy Kubeconfig to Runner
+        run: |
+          echo "${{ secrets.KUBECONFIG_DATA }}" > kubeconfig
+      - name: Deploy to K3s
+        env:
+          KUBECONFIG: ./kubeconfig
+        run: |
+          kubectl set image deployment/myapp myapp=${{ secrets.DOCKER_USERNAME }}/myapp:latest

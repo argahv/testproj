@@ -9,5 +9,5 @@ app.get("/", (req, res) => {
 // Add your script logic here, e.g., app.post('/run-script', ...)
 
 app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+  console.log(`Server running on  http://localhost:${port}`);
 });
