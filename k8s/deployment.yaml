@@ -14,6 +14,6 @@ spec:
     spec:
       containers:
         - name: testproj
-          image: argahv/testproj:latest
+          image: 0b1cf0a46e22c4ba8e30efa131fda121a260bc99
           ports:
             - containerPort: 80
