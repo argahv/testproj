@@ -7,10 +7,14 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          persist-credentials: true
 
       - name: Login to DockerHub
         uses: docker/login-action@v3
@@ -37,5 +41,3 @@ jobs:
           git add k8s/deployment.yaml
           git commit -m "Update image tag to ${{ github.sha }}" || echo "No changes to commit"
           git push
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
