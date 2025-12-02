@@ -109,6 +109,8 @@ jobs:
             git commit -m "Deploy testproj image main-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.run_id_short }} [skip ci]"
             COMMIT_SHA=$(git rev-parse HEAD)
             echo "🚀 Pushing to origin main..."
+            # Configure remote URL with token for authentication
+            git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/argahv/k3-manifests.git
             git push origin main
             
             # Verify the push was successful
