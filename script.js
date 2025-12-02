@@ -9,5 +9,6 @@ app.get("/", (req, res) => {
 // Add your script logic here, e.g., app.post('/run-script', ...)
 
 app.listen(port, () => {
+  console.log("A new Version has been deployed");
   console.log(`Server running on  http://localhost:${port}`);
 });
