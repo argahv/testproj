@@ -30,17 +30,20 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           push: true
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ secrets.DOCKER_USERNAME }}/testproj:latest
+          platforms: linux/amd64
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/testproj:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/testproj:latest
 
       - name: Update deployment.yaml with new image tag
         run: |
-          sed -i "s|argahv/testproj:.*|argahv/testproj:latest|g" k8s/deployment.yaml
+          NEW_TAG="${{ github.sha }}"
+          sed -i "s|image: .*/testproj:.*|image: argahv/testproj:${NEW_TAG}|g" k8s/deployment.yaml
 
       - name: Commit updated manifest
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add k8s/deployment.yaml
-          git commit -m "Update image tag to ${{ github.sha }}" || echo "No changes to commit"
+          git commit -m "Deploy image ${{ github.sha }}" || echo "No changes to commit"
           git push
