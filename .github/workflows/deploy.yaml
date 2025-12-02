@@ -11,20 +11,24 @@ jobs:
       contents: write
 
     steps:
+      # 1️⃣ Checkout repo
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
           persist-credentials: true
 
+      # 2️⃣ Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # 3️⃣ Login to DockerHub
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      # 4️⃣ Build and push Docker image with unique SHA tag
       - name: Build and Push Docker Image
         id: docker_build
         uses: docker/build-push-action@v4
@@ -35,15 +39,18 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/testproj:${{ github.sha }}
             ${{ secrets.DOCKER_USERNAME }}/testproj:latest
 
+      # 5️⃣ Update deployment.yaml with new image tag
       - name: Update deployment.yaml with new image tag
         run: |
           NEW_TAG="${{ github.sha }}"
-          sed -i "s|image: .*/testproj:.*|image: argahv/testproj:${NEW_TAG}|g" k8s/deployment.yaml
+          echo "Updating deployment.yaml with image tag $NEW_TAG"
+          sed -i "s|image: argahv/testproj:.*|image: argahv/testproj:${NEW_TAG}|g" k8s/deployment.yaml
 
+      # 6️⃣ Commit updated manifest if there are changes
       - name: Commit updated manifest
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add k8s/deployment.yaml
-          git commit -m "Deploy image ${{ github.sha }}" || echo "No changes to commit"
+          git diff --cached --quiet || git commit -m "Deploy image ${{ github.sha }}"
           git push
