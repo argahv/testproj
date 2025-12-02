@@ -28,7 +28,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 4️⃣ Build and push Docker image with unique SHA tag
+      # 4️⃣ Build and push Docker image
       - name: Build and Push Docker Image
         id: docker_build
         uses: docker/build-push-action@v4
@@ -37,20 +37,33 @@ jobs:
           platforms: linux/amd64
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/testproj:${{ github.sha }}
-            ${{ secrets.DOCKER_USERNAME }}/testproj:latest
 
       # 5️⃣ Update deployment.yaml with new image tag
       - name: Update deployment.yaml with new image tag
         run: |
           NEW_TAG="${{ github.sha }}"
           echo "Updating deployment.yaml with image tag $NEW_TAG"
-          sed -i "s|image: argahv/testproj:.*|image: argahv/testproj:${NEW_TAG}|g" k8s/deployment.yaml
+          # Handle both formats: "image: argahv/testproj:..." or "image: <raw-sha>"
+          if grep -q "image: argahv/testproj:" k8s/deployment.yaml; then
+            # Replace existing argahv/testproj tag
+            sed -i "s|image: argahv/testproj:.*|image: argahv/testproj:${NEW_TAG}|g" k8s/deployment.yaml
+          else
+            # Replace raw SHA or any other format
+            sed -i "s|image: .*|image: argahv/testproj:${NEW_TAG}|g" k8s/deployment.yaml
+          fi
+          echo "Updated deployment.yaml:"
+          grep "image:" k8s/deployment.yaml
 
-      # 6️⃣ Commit updated manifest if there are changes
+      # 6️⃣ Commit updated manifest if changes exist
       - name: Commit updated manifest
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add k8s/deployment.yaml
-          git diff --cached --quiet || git commit -m "Deploy image ${{ github.sha }}"
-          git push
+          if git diff --cached --quiet; then
+            echo "No changes to commit - image tag unchanged"
+          else
+            git commit -m "Deploy image ${{ github.sha }}"
+            git push
+            echo "✅ Pushed updated deployment.yaml - ArgoCD will auto-deploy"
+          fi
