@@ -53,7 +53,7 @@ jobs:
         with:
           repository: argahv/k3-manifests
           path: manifests-repo
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.MANIFEST_REPO_TOKEN }}
           persist-credentials: true
 
       # 7️⃣ Update Rollout manifest with new image tag
@@ -84,7 +84,7 @@ jobs:
       - name: Commit updated manifest
         working-directory: manifests-repo
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.MANIFEST_REPO_TOKEN }}
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
