@@ -13,55 +13,78 @@ jobs:
     steps:
       # 1️⃣ Checkout repo
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           persist-credentials: true
 
-      # 2️⃣ Set up Docker Buildx
+      # 2️⃣ Get short SHA and short Run ID
+      - name: Get short SHA and short Run ID
+        id: vars
+        run: |
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "run_id_short=${GITHUB_RUN_ID:0:4}" >> $GITHUB_OUTPUT
+          echo "Image tag will be: main-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.run_id_short }}"
+
+      # 3️⃣ Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 3️⃣ Login to DockerHub
+      # 4️⃣ Login to DockerHub
       - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 4️⃣ Build and push Docker image
+      # 5️⃣ Build and push Docker image
       - name: Build and Push Docker Image
         id: docker_build
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           push: true
           platforms: linux/amd64
           tags: |
-            ${{ secrets.DOCKER_USERNAME }}/testproj:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/testproj:main-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.run_id_short }}
+            ${{ secrets.DOCKER_USERNAME }}/testproj:latest
 
-      # 5️⃣ Update deployment.yaml with new image tag
-      - name: Update deployment.yaml with new image tag
+      # 6️⃣ Checkout manifest repository
+      - name: Checkout manifest repository
+        uses: actions/checkout@v4
+        with:
+          repository: argahv/k3-manifests
+          path: manifests-repo
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
+
+      # 7️⃣ Update Rollout manifest with new image tag
+      - name: Update Rollout manifest with new image tag
         run: |
-          NEW_TAG="${{ github.sha }}"
-          echo "🔍 Current image in deployment.yaml:"
-          grep "image:" k8s/deployment.yaml || echo "ERROR: No image line found!"
+          NEW_TAG="main-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.run_id_short }}"
+          MANIFEST_FILE="manifests-repo/K8s-Manifest/testproj/Argo-Rollout/testproj.yaml"
+
+          echo "🔍 Current image in Rollout manifest:"
+          grep "image:" "$MANIFEST_FILE" || echo "ERROR: No image line found!"
           echo ""
           echo "📝 Updating to image tag: $NEW_TAG"
 
           # Replace any image line (handles PLACEHOLDER, SHA, or any tag)
-          sed -i "s|image:.*|image: argahv/testproj:${NEW_TAG}|g" k8s/deployment.yaml
+          sed -i "s|image:.*|image: argahv/testproj:${NEW_TAG}|g" "$MANIFEST_FILE"
 
           echo ""
-          echo "✅ Updated deployment.yaml:"
-          grep "image:" k8s/deployment.yaml
+          echo "✅ Updated Rollout manifest:"
+          grep "image:" "$MANIFEST_FILE"
 
           # Verify the update worked
-          if ! grep -q "image: argahv/testproj:${NEW_TAG}" k8s/deployment.yaml; then
+          if ! grep -q "image: argahv/testproj:${NEW_TAG}" "$MANIFEST_FILE"; then
             echo "❌ ERROR: Failed to update image tag!"
             exit 1
           fi
 
-      # 6️⃣ Commit updated manifest if changes exist
+      # 8️⃣ Commit and push to manifest repository
       - name: Commit updated manifest
+        working-directory: manifests-repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
@@ -71,32 +94,32 @@ jobs:
           echo "Git status before:"
           git status
 
-          git add k8s/deployment.yaml
+          git add K8s-Manifest/testproj/Argo-Rollout/testproj.yaml
 
           # Show what changed
           echo "Changes staged:"
-          git diff --cached k8s/deployment.yaml || echo "No changes detected"
+          git diff --cached K8s-Manifest/testproj/Argo-Rollout/testproj.yaml || echo "No changes detected"
 
           if git diff --cached --quiet; then
-            echo "⚠️  No changes to commit - image tag may already be ${{ github.sha }}"
-            echo "Current image in deployment.yaml:"
-            grep "image:" k8s/deployment.yaml
+            echo "⚠️  No changes to commit - image tag may already be main-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.run_id_short }}"
+            echo "Current image in Rollout manifest:"
+            grep "image:" K8s-Manifest/testproj/Argo-Rollout/testproj.yaml
           else
             echo "💾 Committing changes..."
-            git commit -m "Deploy image ${{ github.sha }} [skip ci]"
+            git commit -m "Deploy testproj image main-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.run_id_short }} [skip ci]"
             COMMIT_SHA=$(git rev-parse HEAD)
-            echo "🚀 Pushing to origin $(git branch --show-current)..."
-            git push origin HEAD:$(git branch --show-current)
+            echo "🚀 Pushing to origin main..."
+            git push origin main
             
             # Verify the push was successful
             echo ""
-            echo "✅ Successfully pushed updated deployment.yaml"
-            echo "📌 Local Commit SHA: $COMMIT_SHA"
-            echo "📌 Docker Image SHA: ${{ github.sha }}"
+            echo "✅ Successfully pushed updated Rollout manifest"
+            echo "📌 Manifest Commit SHA: $COMMIT_SHA"
+            echo "📌 Docker Image Tag: main-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.run_id_short }}"
             echo ""
             echo "Verifying remote commit..."
             git fetch origin
-            REMOTE_SHA=$(git rev-parse origin/$(git branch --show-current))
+            REMOTE_SHA=$(git rev-parse origin/main)
             if [ "$COMMIT_SHA" = "$REMOTE_SHA" ]; then
               echo "✅ Remote commit verified: $REMOTE_SHA"
             else
