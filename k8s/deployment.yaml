@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: testproj
-          image: argahv/testproj:PLACEHOLDER
+          image: argahv/testproj:75d20dc67c9bf64bfebf455613f2033119e2ff96
           imagePullPolicy: Always
           ports:
             - name: http
