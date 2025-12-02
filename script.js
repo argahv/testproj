@@ -3,7 +3,7 @@ const app = express();
 const port = process.env.PORT || 3000;
 
 app.get("/", (req, res) => {
-  res.send("Hello from sc.zzyra.io! Your JS script lives.");
+  res.send("Hello from testscript.zzyra.io! Your JS script lives.");
 });
 
 // Add your script logic here, e.g., app.post('/run-script', ...)
