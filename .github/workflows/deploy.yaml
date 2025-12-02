@@ -42,28 +42,67 @@ jobs:
       - name: Update deployment.yaml with new image tag
         run: |
           NEW_TAG="${{ github.sha }}"
-          echo "Updating deployment.yaml with image tag $NEW_TAG"
-          # Handle both formats: "image: argahv/testproj:..." or "image: <raw-sha>"
-          if grep -q "image: argahv/testproj:" k8s/deployment.yaml; then
-            # Replace existing argahv/testproj tag
-            sed -i "s|image: argahv/testproj:.*|image: argahv/testproj:${NEW_TAG}|g" k8s/deployment.yaml
-          else
-            # Replace raw SHA or any other format
-            sed -i "s|image: .*|image: argahv/testproj:${NEW_TAG}|g" k8s/deployment.yaml
-          fi
-          echo "Updated deployment.yaml:"
+          echo "🔍 Current image in deployment.yaml:"
+          grep "image:" k8s/deployment.yaml || echo "ERROR: No image line found!"
+          echo ""
+          echo "📝 Updating to image tag: $NEW_TAG"
+
+          # Replace any image line (handles PLACEHOLDER, SHA, or any tag)
+          sed -i "s|image:.*|image: argahv/testproj:${NEW_TAG}|g" k8s/deployment.yaml
+
+          echo ""
+          echo "✅ Updated deployment.yaml:"
           grep "image:" k8s/deployment.yaml
+
+          # Verify the update worked
+          if ! grep -q "image: argahv/testproj:${NEW_TAG}" k8s/deployment.yaml; then
+            echo "❌ ERROR: Failed to update image tag!"
+            exit 1
+          fi
 
       # 6️⃣ Commit updated manifest if changes exist
       - name: Commit updated manifest
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
+
+          # Show current branch and status
+          echo "Current branch: $(git branch --show-current)"
+          echo "Git status before:"
+          git status
+
           git add k8s/deployment.yaml
+
+          # Show what changed
+          echo "Changes staged:"
+          git diff --cached k8s/deployment.yaml || echo "No changes detected"
+
           if git diff --cached --quiet; then
-            echo "No changes to commit - image tag unchanged"
+            echo "⚠️  No changes to commit - image tag may already be ${{ github.sha }}"
+            echo "Current image in deployment.yaml:"
+            grep "image:" k8s/deployment.yaml
           else
-            git commit -m "Deploy image ${{ github.sha }}"
-            git push
-            echo "✅ Pushed updated deployment.yaml - ArgoCD will auto-deploy"
+            echo "💾 Committing changes..."
+            git commit -m "Deploy image ${{ github.sha }} [skip ci]"
+            COMMIT_SHA=$(git rev-parse HEAD)
+            echo "🚀 Pushing to origin $(git branch --show-current)..."
+            git push origin HEAD:$(git branch --show-current)
+            
+            # Verify the push was successful
+            echo ""
+            echo "✅ Successfully pushed updated deployment.yaml"
+            echo "📌 Local Commit SHA: $COMMIT_SHA"
+            echo "📌 Docker Image SHA: ${{ github.sha }}"
+            echo ""
+            echo "Verifying remote commit..."
+            git fetch origin
+            REMOTE_SHA=$(git rev-parse origin/$(git branch --show-current))
+            if [ "$COMMIT_SHA" = "$REMOTE_SHA" ]; then
+              echo "✅ Remote commit verified: $REMOTE_SHA"
+            else
+              echo "⚠️  Warning: Local and remote SHAs don't match"
+            fi
+            echo ""
+            echo "🔔 ArgoCD should detect this change and auto-sync within 3 minutes"
+            echo "📋 Check ArgoCD UI to see if it picks up commit: $COMMIT_SHA"
           fi
