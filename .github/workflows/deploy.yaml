@@ -56,7 +56,38 @@ jobs:
           token: ${{ secrets.MANIFEST_REPO_TOKEN }}
           persist-credentials: true
 
-      # 7️⃣ Update Rollout manifest with new image tag
+      # 7️⃣ Validate all required manifests exist
+      - name: Validate manifest completeness
+        working-directory: manifests-repo
+        run: |
+          echo "🔍 Validating manifest completeness..."
+          REQUIRED_FILES=(
+            "K8s-Manifest/testproj/Argo-Rollout/testproj.yaml"
+            "K8s-Manifest/testproj/svc.yaml"
+            "K8s-Manifest/testproj/ingress.yaml"
+          )
+
+          MISSING_FILES=()
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              MISSING_FILES+=("$file")
+            else
+              echo "✅ Found: $file"
+            fi
+          done
+
+          if [ ${#MISSING_FILES[@]} -ne 0 ]; then
+            echo "❌ ERROR: Missing required manifests:"
+            printf '  - %s\n' "${MISSING_FILES[@]}"
+            echo ""
+            echo "This will prevent ArgoCD from deploying the application correctly."
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ All required manifests present"
+
+      # 8️⃣ Update Rollout manifest with new image tag
       - name: Update Rollout manifest with new image tag
         run: |
           NEW_TAG="main-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.run_id_short }}"
@@ -80,8 +111,21 @@ jobs:
             exit 1
           fi
 
-      # 8️⃣ Commit and push to manifest repository
-      - name: Commit updated manifest
+          # Validate YAML syntax
+          echo ""
+          echo "🔍 Validating YAML syntax..."
+          if ! command -v yq &> /dev/null; then
+            echo "⚠️  yq not available, skipping YAML validation"
+          else
+            yq eval '.' "$MANIFEST_FILE" > /dev/null || {
+              echo "❌ ERROR: Invalid YAML syntax in Rollout manifest!"
+              exit 1
+            }
+            echo "✅ YAML syntax valid"
+          fi
+
+      # 9️⃣ Commit and push to manifest repository (atomic commit)
+      - name: Commit and push updated manifests
         working-directory: manifests-repo
         env:
           GITHUB_TOKEN: ${{ secrets.MANIFEST_REPO_TOKEN }}
@@ -94,19 +138,42 @@ jobs:
           echo "Git status before:"
           git status
 
-          git add K8s-Manifest/testproj/Argo-Rollout/testproj.yaml
+          # Stage all changes in the testproj directory (atomic commit)
+          git add K8s-Manifest/testproj/
 
           # Show what changed
+          echo ""
           echo "Changes staged:"
-          git diff --cached K8s-Manifest/testproj/Argo-Rollout/testproj.yaml || echo "No changes detected"
+          git diff --cached --stat || echo "No changes detected"
 
           if git diff --cached --quiet; then
             echo "⚠️  No changes to commit - image tag may already be main-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.run_id_short }}"
             echo "Current image in Rollout manifest:"
             grep "image:" K8s-Manifest/testproj/Argo-Rollout/testproj.yaml
           else
-            echo "💾 Committing changes..."
-            git commit -m "Deploy testproj image main-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.run_id_short }} [skip ci]"
+            # Final validation before commit
+            echo ""
+            echo "🔍 Final validation before commit..."
+            REQUIRED_FILES=(
+              "K8s-Manifest/testproj/Argo-Rollout/testproj.yaml"
+              "K8s-Manifest/testproj/svc.yaml"
+              "K8s-Manifest/testproj/ingress.yaml"
+            )
+            
+            for file in "${REQUIRED_FILES[@]}"; do
+              if [ ! -f "$file" ]; then
+                echo "❌ ERROR: Required file missing: $file"
+                echo "Aborting commit to prevent incomplete deployment."
+                exit 1
+              fi
+            done
+            echo "✅ All required files present"
+            
+            echo ""
+            echo "💾 Committing changes (atomic commit)..."
+            IMAGE_TAG="main-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.run_id_short }}"
+            git commit -m "Deploy testproj image ${IMAGE_TAG} [skip ci]"
+            
             COMMIT_SHA=$(git rev-parse HEAD)
             echo "🚀 Pushing to origin main..."
             # Configure remote URL with token for authentication
@@ -115,9 +182,9 @@ jobs:
             
             # Verify the push was successful
             echo ""
-            echo "✅ Successfully pushed updated Rollout manifest"
+            echo "✅ Successfully pushed updated manifests"
             echo "📌 Manifest Commit SHA: $COMMIT_SHA"
-            echo "📌 Docker Image Tag: main-${{ steps.vars.outputs.sha_short }}-${{ steps.vars.outputs.run_id_short }}"
+            echo "📌 Docker Image Tag: ${IMAGE_TAG}"
             echo ""
             echo "Verifying remote commit..."
             git fetch origin
